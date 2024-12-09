@@ -1,0 +1,99 @@
+/*
+* 단건 조회시 출력을 구조체 단위로 데이터를 받는 방법
+*/
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sqlca.h>
+#include <sqlda.h>
+#include <sqlcpr.h>
+
+/* 변수길이 상수 선언 */
+#define     UNAME_LEN      20
+#define     PWD_LEN        40
+
+/* OUTPUT 데이터 구조체 */
+struct
+{
+    VARCHAR   emp_name[UNAME_LEN];
+    float     salary;
+    float     commission;
+} emprec;
+
+/* OUTPUT indicator 구조체 */
+struct
+{
+    short     emp_name_ind;
+    short     sal_ind;
+    short     comm_ind;
+} emprec_ind;
+
+/*  INPUT host 변수 */
+int         emp_number;
+
+
+/* 오류처리 함수 */
+static void sql_error(char *msg)
+{
+    char err_msg[128];
+    size_t buf_len, msg_len;
+
+    printf(stderr, "\n%s\n", msg);
+    buf_len = sizeof (err_msg);
+    sqlglm(err_msg, &buf_len, &msg_len);
+    fprintf(stderr, "%.*s\n", msg_len, err_msg);
+
+    EXEC SQL ROLLBACK RELEASE;
+    exit(1);
+}
+
+static int oracle_connect(const char *id, const char *passwd)
+{
+    EXEC SQL CONNECT :id IDENTIFIED BY :passwd;
+    if(sqlca.sqlcode < 0) {
+        fprintf(stderr, "Oracle Connect error: %.*s\n", sqlca.sqlerrm.sqlerrml, sqlca.sqlerrm.sqlerrmc);
+        return -1;
+    }
+    printf("\nConnected to ORACLE as user: %s\n", id);
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    char temp_char[32];
+
+    emp_number = 0;
+    printf("\nEnter employee number: ");
+    gets(temp_char);
+    emp_number = atoi(temp_char);
+
+    EXEC SQL SELECT ename, sal, comm
+        INTO :emprec INDICATOR :emprec_ind
+        FROM EMP
+        WHERE EMPNO = :emp_number;
+
+    if(sqlca.sqlcode == 1403) {
+        fprintf(stderr, "사번 [%d] 존재하지 않는 사번입니다.\n", emp_number);
+        EXEC SQL ROLLBACK WORK RELEASE;
+        return 0;
+    } else if(sqlca.sqlcode < 0) {
+        sql_error("조회 오류: ");
+    }
+    printf("\n\nEmployee   Salary    Commission\n");
+    printf("--------   -------   ----------\n");
+
+    emprec.emp_name.arr[emprec.emp_name.len] = '\0';
+    printf("%s      %7.2f      ", emprec.emp_name.arr, emprec.salary);
+
+    if (emprec_ind.comm_ind == -1) {
+        printf("NULL\n");
+    } else {
+        printf("%7.2f\n", emprec.commission);
+    }
+    
+    EXEC SQL COMMIT WORK RELEASE;
+
+    return 0;
+}
+
+ 
