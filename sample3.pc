@@ -1,0 +1,111 @@
+/*
+ * 대량 조회시 Array Fetch sample
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sqlca.h>
+
+#define NAME_LENGTH    8
+#define ARRAY_LENGTH   1000
+
+/* USER ID / PASSWORD 정보 */
+char *username = "SCOTT";
+char *password = "TIGER";
+
+/* Declare a host structure tag. */
+struct
+{
+    int    emp_number[ARRAY_LENGTH];
+    char   emp_name[ARRAY_LENGTH][NAME_LENGTH];
+    float  salary[ARRAY_LENGTH];
+} emp_rec;
+
+static void print_rows(int n)
+{
+    int i;
+
+    printf("\nNumber    Employee    Salary");
+    printf("\n------    --------    -------\n");
+
+    for (i = 0; i < n; i++)
+        printf("[%d]    [%s]  [%8.2f] => %x %x %x\n", emp_rec.emp_number[i], emp_rec.emp_name[i], emp_rec.salary[i], emp_rec.emp_name[i][0],emp_rec.emp_name[i][1],emp_rec.emp_name[i][2]);
+
+}
+
+/* 오류처리 함수 */
+static void sql_error(char *msg)
+{
+    char err_msg[128];
+    size_t buf_len, msg_len;
+
+    printf(stderr, "\n%s\n", msg);
+    buf_len = sizeof (err_msg);
+    sqlglm(err_msg, &buf_len, &msg_len);
+    fprintf(stderr, "%.*s\n", msg_len, err_msg);
+
+    EXEC SQL ROLLBACK RELEASE;
+    exit(1);
+}
+
+/* Oracle Connect 함수 */
+static int oracle_connect(const char *id, const char *passwd)
+{
+    EXEC SQL CONNECT :id IDENTIFIED BY :passwd;
+    if(sqlca.sqlcode < 0) {
+        fprintf(stderr, "Oracle Connect error: %.*s\n", sqlca.sqlerrm.sqlerrml, sqlca.sqlerrm.sqlerrmc);
+        return -1;
+    }
+    printf("\nConnected to ORACLE as user: %s\n", id);
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    int  num_ret; 
+  
+    if(oracle_connect("SCOTT", "TIGER") < 0) {
+        return -1;
+    }
+
+    EXEC SQL DECLARE c1 CURSOR FOR
+        SELECT empno, ename, sal FROM emp;
+
+    EXEC SQL OPEN c1;
+    if(sqlca.sqlcode < 0) {
+        sql_error("CURSOR OPEN ERROR: ");
+    }
+    
+    num_ret = 0;
+
+    for (;;)
+    {
+        EXEC SQL FETCH c1 INTO :emp_rec;
+
+        if(sqlca.sqlcode < 0) {
+            sql_error("FETCH ERROR:");
+        }
+        
+        /* 조회결과 처리 */
+        print_rows(sqlca.sqlerrd[2] - num_ret);
+        num_ret = sqlca.sqlerrd[2]; 
+
+        /* 
+        * 한번에 FETCH한 건수가 ARRAY_LENGTH 보다 작으면 1403 발생함.
+        * 따라서 print_rows()를 먼저 호출하여 FETCH된 건수만큼 먼저 처리가 필요함
+        */
+        if(sqlca.sqlcode == 1403) {
+            break;
+        }
+    }
+
+    EXEC SQL CLOSE c1;
+    
+    EXEC SQL COMMIT WORK RELEASE;
+    return 0;
+}
+
+ 
+
+ 

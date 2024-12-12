@@ -1,0 +1,107 @@
+
+/*
+ *  sample8.pc:  Dynamic SQL Method 3
+ *
+ *  This program uses dynamic SQL Method 3 to retrieve the names of
+ *  all employees in a given department from the EMP table.
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sqlca.h>
+
+VARCHAR  dynstmt[80];
+char     ename[32];
+int      deptno = 10;
+
+
+/* 오류처리 함수 */
+static void sql_error(char *msg)
+{
+    char err_msg[128];
+    size_t buf_len, msg_len;
+
+    printf(stderr, "\n%s\n", msg);
+    buf_len = sizeof (err_msg);
+    sqlglm(err_msg, &buf_len, &msg_len);
+    fprintf(stderr, "%.*s\n", msg_len, err_msg);
+
+    EXEC SQL ROLLBACK RELEASE;
+    exit(1);
+}
+
+/* Oracle Connect 함수 */
+static int oracle_connect(const char *id, const char *passwd)
+{
+    EXEC SQL CONNECT :id IDENTIFIED BY :passwd;
+    if(sqlca.sqlcode < 0) {
+        fprintf(stderr, "Oracle Connect error: %.*s\n", sqlca.sqlerrm.sqlerrml, sqlca.sqlerrm.sqlerrmc);
+        return -1;
+    }
+    printf("\nConnected to ORACLE as user: %s\n", id);
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+
+    if(oracle_connect("SCOTT", "TIGER") < 0) {
+        return -1;
+    }
+    
+    strcpy((char *)dynstmt.arr, "SELECT ename FROM emp WHERE deptno = :v1");
+    dynstmt.len = (unsigned short)strlen((char *)dynstmt.arr);
+
+    EXEC SQL PREPARE S FROM :dynstmt;
+
+    if(sqlca.sqlcode < 0) {
+        sql_error("PREPARE ERROR: ");
+    }
+
+    EXEC SQL DECLARE C CURSOR FOR S;
+
+    EXEC SQL OPEN C USING :deptno;
+
+    if(sqlca.sqlcode < 0) {
+        sql_error("CURSOR OPEN ERROR: ");
+    }
+
+    for (;;)
+    {
+        EXEC SQL FETCH C INTO :ename;
+        
+        /* 조회 데이터 처리 */
+        puts((char *) ename.arr);
+        
+    }
+
+    for (;;)
+    {
+        EXEC SQL FETCH C INTO :ename;
+
+        if(sqlca.sqlcode < 0) {
+            sql_error("FETCH ERROR:");
+        }
+
+        /* 조회된 데이터 처리로직*/
+        puts((char *) ename.arr);
+
+        if(sqlca.sqlcode == 1403) {
+            break;
+        }
+    }
+
+    printf("\nQuery returned %d row%s.\n\n", sqlca.sqlerrd[2], (sqlca.sqlerrd[2] == 1) ? "" : "s");
+
+    EXEC SQL CLOSE C;
+
+    EXEC SQL COMMIT RELEASE;
+
+    return 0;
+}
+
+
+ 
+
+ 

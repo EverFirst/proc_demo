@@ -1,0 +1,99 @@
+
+/*
+ *  Dynamic SQL Method 2
+ *
+ *  This program uses dynamic SQL Method 2 to insert two rows into
+ *  the EMP table, then delete them.
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sqlca.h>
+
+VARCHAR  dynstmt[80];
+int      empno   = 1234;
+int      deptno1 = 10;
+int      deptno2 = 20;
+
+ 
+
+/* 오류처리 함수 */
+static void sql_error(char *msg)
+{
+    char err_msg[128];
+    size_t buf_len, msg_len;
+
+    printf(stderr, "\n%s\n", msg);
+    buf_len = sizeof (err_msg);
+    sqlglm(err_msg, &buf_len, &msg_len);
+    fprintf(stderr, "%.*s\n", msg_len, err_msg);
+
+    EXEC SQL ROLLBACK RELEASE;
+    exit(1);
+}
+
+/* Oracle Connect 함수 */
+static int oracle_connect(const char *id, const char *passwd)
+{
+    EXEC SQL CONNECT :id IDENTIFIED BY :passwd;
+    if(sqlca.sqlcode < 0) {
+        fprintf(stderr, "Oracle Connect error: %.*s\n", sqlca.sqlerrm.sqlerrml, sqlca.sqlerrm.sqlerrmc);
+        return -1;
+    }
+    printf("\nConnected to ORACLE as user: %s\n", id);
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+
+    if(oracle_connect("SCOTT", "TIGER") < 0) {
+        return -1;
+    }
+    
+    strcpy((char *)dynstmt.arr,
+        "INSERT INTO EMP (EMPNO, DEPTNO) VALUES (:v1, :v2)");
+    dynstmt.len = (unsigned short)strlen((char *)dynstmt.arr);
+
+    EXEC SQL PREPARE S FROM :dynstmt;
+    if(sqlca.sqlcode < 0) {
+        sql_error("PREPARE ERROR: ");
+    }
+
+    EXEC SQL EXECUTE S USING :empno, :deptno1;
+    if(sqlca.sqlcode < 0) {
+        sql_error("EXECUTE ERROR: ");
+    }
+
+    empno++;
+    printf("   v1 = %d,  v2 = %d\n", empno, deptno2);
+
+    EXEC SQL EXECUTE S USING :empno, :deptno2;
+    if(sqlca.sqlcode < 0) {
+        sql_error("EXECUTE ERROR: ");
+    }
+
+
+    strcpy((char *)dynstmt.arr,
+        "DELETE FROM EMP WHERE DEPTNO = :v1 OR DEPTNO = :v2");
+    dynstmt.len = (unsigned short)strlen((char *)dynstmt.arr);
+    if(sqlca.sqlcode < 0) {
+        sql_error("EXECUTE ERROR: ");
+    }
+
+
+    EXEC SQL PREPARE S FROM :dynstmt;
+
+    EXEC SQL EXECUTE S USING :deptno1, :deptno2;
+    if(sqlca.sqlcode < 0) {
+        sql_error("EXECUTE ERROR: ");
+    }
+
+    EXEC SQL ROLLBACK WORK RELEASE;
+    return 0;
+}
+
+ 
+
+ 

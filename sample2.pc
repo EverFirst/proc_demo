@@ -1,0 +1,102 @@
+/*
+* 다건 조회시 출력을 구조체 단위로 데이터를 Fetch 하는 sample
+*/
+
+#include <stdio.h>
+#include <string.h>
+#include <sqlca.h>
+#include <stdlib.h>
+#include <sqlda.h>
+#include <sqlcpr.h>
+
+#define LEN_EMP_NAME    32
+ 
+struct emp_info 
+{ 
+    char        emp_name[LEN_EMP_NAME]; 
+    float       salary; 
+    float       commission; 
+}; 
+
+/* 오류처리 함수 */
+static void sql_error(char *msg)
+{
+    char err_msg[128];
+    size_t buf_len, msg_len;
+
+    printf(stderr, "\n%s\n", msg);
+    buf_len = sizeof (err_msg);
+    sqlglm(err_msg, &buf_len, &msg_len);
+    fprintf(stderr, "%.*s\n", msg_len, err_msg);
+
+    EXEC SQL ROLLBACK RELEASE;
+    exit(1);
+}
+
+static int oracle_connect(const char *id, const char *passwd)
+{
+    EXEC SQL CONNECT :id IDENTIFIED BY :passwd;
+    if(sqlca.sqlcode < 0) {
+        fprintf(stderr, "Oracle Connect error: %.*s\n", sqlca.sqlerrm.sqlerrml, sqlca.sqlerrm.sqlerrmc);
+        return -1;
+    }
+    printf("\nConnected to ORACLE as user: %s\n", id);
+    return 0;
+}
+
+int main(int argc, char *argv[]) 
+{ 
+    struct emp_info *emp_rec_ptr;
+    int    fetch_count = 0;
+
+/* Allocate memory for emp_info struct. */ 
+    if ((emp_rec_ptr = (struct emp_info *) malloc(sizeof(struct emp_info))) == 0)
+    { 
+        fprintf(stderr, "Memory allocation error.\n"); 
+        exit(EXIT_FAILURE); 
+    }
+  
+    if(oracle_connect("SCOTT", "TIGER") < 0) {
+        return -1;
+    }
+ 
+    EXEC SQL DECLARE salespeople CURSOR FOR 
+        SELECT ENAME, SAL, COMM 
+            FROM EMP 
+            WHERE JOB LIKE 'SALES%'; 
+ 
+    EXEC SQL OPEN salespeople; 
+
+    if(sqlca.sqlcode < 0) {
+        sql_error("CURSOR OPEN ERROR: ");
+    }
+    
+    printf("\n\nThe company's salespeople are--\n\n");
+    printf("Salesperson   Salary   Commission\n"); 
+    printf("-----------   ------   ----------\n"); 
+
+    for (;;) 
+    { 
+        EXEC SQL FETCH salespeople INTO :emp_rec_ptr; 
+
+        if(sqlca.sqlcode == 1403) {
+            break;
+        } else if(sqlca.sqlcode < 0) {
+            sql_error("FETCH ERROR:");
+        }
+        fetch_count++;
+
+        printf("%s %9.2f %12.2f\n", emp_rec_ptr->emp_name, emp_rec_ptr->salary, emp_rec_ptr->commission); 
+    } 
+    printf("%d 건 조회되었습니다.\n", fetch_count); 
+ 
+    EXEC SQL CLOSE salespeople; 
+
+    EXEC SQL COMMIT WORK RELEASE; 
+
+    return 0; 
+} 
+
+ 
+
+ 
